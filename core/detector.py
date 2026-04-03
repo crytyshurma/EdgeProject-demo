@@ -18,3 +18,31 @@ class Detector:
                 detections.append([x1, y1, x2, y2, conf])
 
         return detections
+    
+
+#
+# from jetson_inference import detectNet
+# import jetson_utils
+
+# class Detector:
+#     def __init__(self):
+#         # lightweight + fast
+#         self.net = detectNet("ssd-mobilenet-v2", threshold=0.5)
+
+#     def detect(self, frame):
+#         # convert numpy → CUDA
+#         cuda_img = jetson_utils.cudaFromNumpy(frame)
+
+#         detections = self.net.Detect(cuda_img)
+
+#         results = []
+#         for d in detections:
+#             x1 = int(d.Left)
+#             y1 = int(d.Top)
+#             x2 = int(d.Right)
+#             y2 = int(d.Bottom)
+#             conf = float(d.Confidence)
+
+#             results.append([x1, y1, x2, y2, conf])
+
+#         return results

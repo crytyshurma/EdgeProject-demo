@@ -3,6 +3,8 @@ import subprocess
 from datetime import datetime
 import numpy as np
 import cv2
+from dotenv import load_dotenv
+load_dotenv()
 
 from config import FRAME_WIDTH, FRAME_HEIGHT, RECORD_COLS, RECORD_ROWS, RECORDING_DIR, CAMERA_LABELS
 from utils.drawing import make_idle_tile, build_grid, stamp_rec_header
@@ -10,10 +12,22 @@ from utils.logger import setup_logging
 
 log = setup_logging()
 
-RTSP_SERVER_URL = os.environ.get("RTSP_SERVER_URL", "rtsp://localhost:8554/live")
+
+def _get_rtsp_url() -> str:
+    """
+    App runs natively; MediaMTX runs in Docker with port 8554 published.
+    FFmpeg pushes to localhost:8554 — Docker forwards it into the container.
+    Override via RTSP_PUSH_URL env-var for a remote MediaMTX host.
+    """
+    return os.environ.get("RTSP_PUSH_URL", "rtsp://localhost:8554/mystream").strip()
+
+
+RTSP_SERVER_URL = _get_rtsp_url()
+
 
 def _label(i: int) -> str:
     return CAMERA_LABELS[i] if i < len(CAMERA_LABELS) else f"CAM {i}"
+
 
 def _grid_dims(n: int) -> tuple[int, int]:
     """Return (cols, rows) for a grid that fits n cameras."""
@@ -22,20 +36,21 @@ def _grid_dims(n: int) -> tuple[int, int]:
     rows = math.ceil(n / cols)
     return cols, rows
 
+
 class SingleFileRecorder:
     """
     Writes ONE video file for the entire session with a FIXED canvas size,
-    and simultaneously streams via RTSP.
+    and simultaneously streams via RTSP → MediaMTX → WebRTC / HLS / RTSP.
 
     Canvas = RECORD_COLS × RECORD_ROWS tiles  (each FRAME_WIDTH × FRAME_HEIGHT).
 
-    Every frame written to the file contains:
+    Every frame contains:
       • Active cameras  → annotated feed (bounding boxes, label, timestamp)
-      • Idle cameras    → dark placeholder tile (camera name + "NO DETECTION" + timestamp)
+      • Idle cameras    → dark placeholder tile (camera name + "NO DETECTION" + ts)
       • Top-right HUD   → ● REC + wall-clock time + active camera list
 
-    Because the canvas size never changes, only one FFmpeg process is ever
-    needed for the whole session — no segments, no gaps.
+    One FFmpeg process is spawned for the whole session using the tee muxer:
+    it encodes once and writes to both an MP4 file and the RTSP push URL.
     """
 
     def __init__(self, num_cams: int, fps: int):
@@ -56,42 +71,24 @@ class SingleFileRecorder:
         self.path = f"{RECORDING_DIR}/surveillance_{ts}.mp4"
         self.rtsp_url = RTSP_SERVER_URL
 
-        # tee muxer: encode ONCE, output to both MP4 file and RTSP stream
+        log.info(
+            "RTSP push target: %s  |  file: %s  |  canvas: %dx%d (%dx%d tiles)",
+            self.rtsp_url, self.path, self.canvas_w, self.canvas_h, self.cols, self.rows,
+        )
+
+        # Tee muxer: encode ONCE → write to MP4 file AND push to RTSP in one pass.
+        # movflags=faststart+frag_keyframe makes the MP4 seekable while recording.
         tee_targets = "|".join([
-            f"[f=mp4]{self.path}",
+            f"[f=mp4:movflags=faststart+frag_keyframe]{self.path}",
             f"[f=rtsp:rtsp_transport=tcp]{self.rtsp_url}",
         ])
-
-        # cmd = [
-        #     "ffmpeg", "-y",
-        #     "-f", "rawvideo",
-        #     "-vcodec", "rawvideo",
-        #     "-pix_fmt", "bgr24",
-        #     "-s", f"{self.canvas_w}x{self.canvas_h}",
-        #     "-r", str(fps),
-        #     "-i", "-",
-
-        #     "-an",
-
-        #     "-vcodec", "libx264",
-        #     "-preset", "veryfast",
-        #     "-tune", "zerolatency",
-        #     "-crf", "23",
-        #     "-pix_fmt", "yuv420p",
-        #     "-g", str(fps * 2),
-
-        #     # tee muxer writes to both outputs in one pass
-        #     "-f", "tee",
-        #     "-map", "0:v",
-        #     tee_targets,
-        # ]
 
         cmd = [
             "ffmpeg", "-y",
 
-            # ── Input: tell FFmpeg to treat this as a live source ──────────────────
-            "-fflags", "nobuffer",          # don't buffer input frames
-            "-flags", "low_delay",          # enable low-delay mode globally
+            # ── Input ──────────────────────────────────────────────────────────
+            "-fflags", "nobuffer",
+            "-flags", "low_delay",
             "-strict", "experimental",
 
             "-f", "rawvideo",
@@ -101,51 +98,53 @@ class SingleFileRecorder:
             "-r", str(fps),
             "-i", "-",
 
-            "-an",
+            "-an",   # no audio
 
-            # ── Encoding: optimise for latency over quality ─────────────────────────
-            "-vcodec", "libx264",
-            "-preset", "ultrafast",         # was "veryfast" — biggest single latency win
+            # ── Encoding ───────────────────────────────────────────────────────
+            "-c:v", "libx264",
+            "-preset", "ultrafast",   # lowest latency for live streaming
             "-tune", "zerolatency",
-            "-crf", "28",                   # slightly lower quality, much faster encode
-            "-pix_fmt", "yuv420p",
-            "-g", str(fps),                 # keyframe every 1s instead of 2s — faster seek/join
-            "-sc_threshold", "0",           # disable scene-change keyframes (keeps GOP stable)
-            "-bf", "0",                     # no B-frames — they add latency
+            "-crf", "28",
+            "-pix_fmt", "yuv420p",    # required for broad player compat
+            "-g", str(fps),           # keyframe every 1 s → faster stream join
+            "-sc_threshold", "0",     # no scene-change keyframes (stable GOP)
+            "-bf", "0",               # no B-frames (adds latency)
 
-            # ── Output buffering: flush aggressively ───────────────────────────────
-            "-flush_packets", "1",          # flush every packet immediately
-            "-fflags", "+flush_packets",
-
+            # ── Output ─────────────────────────────────────────────────────────
             "-f", "tee",
             "-map", "0:v",
             tee_targets,
         ]
 
-        self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                      stderr=subprocess.PIPE)
-
-        log.info(
-            "SingleFileRecorder started | canvas: %dx%d (%dx%d tiles) | file: %s | RTSP: %s",
-            self.canvas_w, self.canvas_h, self.cols, self.rows, self.path, self.rtsp_url
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
         )
+
+        log.info("SingleFileRecorder started — FFmpeg PID %d", self._proc.pid)
 
     # ── Public ────────────────────────────────────────────────────────────────
 
-    def write(self,
-              all_frames:    dict[int, np.ndarray],
-              idle_cam_ids:  list[int]):               # cams with NO detections this frame
+    def write(
+        self,
+        all_frames:   dict[int, np.ndarray],
+        idle_cam_ids: list[int],
+    ) -> None:
         """
         Build the full recording canvas and push it to FFmpeg.
 
-        all_frames    : {cam_id: frame} for cameras that HAVE detections
-        idle_cam_ids  : cam IDs with no detections (get placeholder tile)
+        all_frames    : {cam_id: annotated_frame} for cameras WITH detections
+        idle_cam_ids  : cam IDs with no detections (shown as placeholder tiles)
         """
         if self._proc is None:
             return
 
-        tiles = []
-        active_labels = []
+        tiles: list[np.ndarray] = []
+        active_labels: list[str] = []
+
         for cam_id in range(self.num_cams):
             if cam_id in all_frames:
                 tiles.append(all_frames[cam_id])
@@ -153,7 +152,7 @@ class SingleFileRecorder:
             else:
                 tiles.append(make_idle_tile(cam_id))
 
-        # Pad remaining slots (if canvas has more slots than cameras)
+        # Pad empty slots so the canvas is always full
         while len(tiles) < self.cols * self.rows:
             blank = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
             blank[:] = (10, 10, 10)
@@ -164,16 +163,18 @@ class SingleFileRecorder:
 
         try:
             self._proc.stdin.write(canvas.tobytes())
-        except (BrokenPipeError, OSError) as e:
-            log.error("FFmpeg pipe error (%s): %s", e, self._proc.stderr.read().decode(errors="replace"))
+        except (BrokenPipeError, OSError) as exc:
+            stderr_out = self._proc.stderr.read().decode(errors="replace")
+            log.error("FFmpeg pipe error (%s): %s", exc, stderr_out)
             self._proc = None
 
-    def close(self):
+    def close(self) -> None:
         if self._proc is not None:
             try:
                 self._proc.stdin.close()
                 self._proc.wait(timeout=15)
-                log.info("SingleFileRecorder closed | file: %s | RTSP: %s", self.path, self.rtsp_url)
+                log.info("SingleFileRecorder closed | file: %s", self.path)
             except Exception as exc:
                 log.warning("FFmpeg close warning: %s", exc)
-            self._proc = None
+            finally:
+                self._proc = None
