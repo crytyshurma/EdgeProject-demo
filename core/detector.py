@@ -1,62 +1,43 @@
-# from ultralytics import YOLO
 import torch
 from config import DETECT_CLASSES, CONFIDENCE_THRESH
 
 class Detector:
     def __init__(self):
-        # self.model = YOLO('yolov8n.pt')
-        #self.model = torch.hub.load('ultralytics/yolov5:v6.2', 'yolov5n', pretrained=True)
-        self.model = torch.hub.load(
-             '/yolov5',
-             'yolov5n',
-             source='local',
-             pretrained=True
-        )
-        self.model.conf = CONFIDENCE_THRESH
-        self.model.iou = 0.45
+        # load local YOLOv5 model
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        self.model = torch.load("yolov5n.pt", map_location=self.device)
+        self.model = self.model['model'].float().fuse().eval().to(self.device)
 
     def detect(self, frame):
-        results = self.model(frame, imgsz=416)[0]
+        # BGR numpy -> tensor
+        img = torch.from_numpy(frame).to(self.device)
+
+        # HWC -> CHW
+        img = img.permute(2, 0, 1).float()
+
+        # normalize
+        img /= 255.0
+
+        # add batch
+        img = img.unsqueeze(0)
+
+        # inference
+        with torch.no_grad():
+            pred = self.model(img)[0]
 
         detections = []
-        for box in results.boxes:
-            cls = int(box.cls[0])
-            conf = float(box.conf[0])
 
-            if cls in DETECT_CLASSES and conf > CONFIDENCE_THRESH:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                detections.append([x1, y1, x2, y2, conf])
+        # NMS (YOLOv5 style)
+        pred = non_max_suppression(pred, CONFIDENCE_THRESH, 0.45)[0]
+
+        if pred is not None:
+            for *xyxy, conf, cls in pred:
+                cls = int(cls)
+                conf = float(conf)
+
+                if cls in DETECT_CLASSES:
+                    x1, y1, x2, y2 = map(int, xyxy)
+                    detections.append([x1, y1, x2, y2, conf])
 
         return detections
-    
-
-
-# from jetson_inference import detectNet
-# import jetson_utils
-
-# class Detector:
-#     def __init__(self):
-#         # lightweight + fast
-#         self.net = detectNet("ssd-mobilenet-v2", threshold=0.5)
-#         self.person_class_id = 1
-
-#     def detect(self, frame):
-#         # convert numpy → CUDA
-#         cuda_img = jetson_utils.cudaFromNumpy(frame)
-
-#         detections = self.net.Detect(cuda_img)
-
-#         results = []
-#         for d in detections:
-#             if int(d.ClassID) != self.person_class_id:
-#                 continue
-
-#             x1 = int(d.Left)
-#             y1 = int(d.Top)
-#             x2 = int(d.Right)
-#             y2 = int(d.Bottom)
-#             conf = float(d.Confidence)
-
-#             results.append([x1, y1, x2, y2, conf])
-
-#         return results
