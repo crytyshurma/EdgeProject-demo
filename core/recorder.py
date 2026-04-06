@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 from dotenv import load_dotenv
 load_dotenv()
-
+from typing import Tuple,Dict,List
 from config import FRAME_WIDTH, FRAME_HEIGHT, RECORD_COLS, RECORD_ROWS, RECORDING_DIR, CAMERA_LABELS
 from utils.drawing import make_idle_tile, build_grid, stamp_rec_header
 from utils.logger import setup_logging
@@ -29,7 +29,7 @@ def _label(i: int) -> str:
     return CAMERA_LABELS[i] if i < len(CAMERA_LABELS) else f"CAM {i}"
 
 
-def _grid_dims(n: int) -> tuple[int, int]:
+def _grid_dims(n: int) -> Tuple[int, int]:
     """Return (cols, rows) for a grid that fits n cameras."""
     import math
     cols = math.ceil(math.sqrt(n))
@@ -47,7 +47,7 @@ class SingleFileRecorder:
     Every frame contains:
       • Active cameras  → annotated feed (bounding boxes, label, timestamp)
       • Idle cameras    → dark placeholder tile (camera name + "NO DETECTION" + ts)
-      • Top-right HUD   → ● REC + wall-clock time + active camera list
+      • Top-right HUD   → ● REC + wall-clock time + active camera List
 
     One FFmpeg process is spawned for the whole session using the tee muxer:
     it encodes once and writes to both an MP4 file and the RTSP push URL.
@@ -130,8 +130,8 @@ class SingleFileRecorder:
 
     def write(
         self,
-        all_frames:   dict[int, np.ndarray],
-        idle_cam_ids: list[int],
+        all_frames:   Dict[int, np.ndarray],
+        idle_cam_ids: List[int],
     ) -> None:
         """
         Build the full recording canvas and push it to FFmpeg.
@@ -142,8 +142,8 @@ class SingleFileRecorder:
         if self._proc is None:
             return
 
-        tiles: list[np.ndarray] = []
-        active_labels: list[str] = []
+        tiles: List[np.ndarray] = []
+        active_labels: List[str] = []
 
         for cam_id in range(self.num_cams):
             if cam_id in all_frames:

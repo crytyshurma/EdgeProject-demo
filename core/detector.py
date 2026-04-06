@@ -5,7 +5,13 @@ from config import DETECT_CLASSES, CONFIDENCE_THRESH
 class Detector:
     def __init__(self):
         # self.model = YOLO('yolov8n.pt')
-        self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=true)
+        #self.model = torch.hub.load('ultralytics/yolov5:v6.2', 'yolov5n', pretrained=True)
+        self.model = torch.hub.load(
+             '/yolov5',
+             'yolov5n',
+             source='local',
+             pretrained=True
+        )
         self.model.conf = CONFIDENCE_THRESH
         self.model.iou = 0.45
 
