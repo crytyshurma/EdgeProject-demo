@@ -75,7 +75,7 @@ class AlertManager:
         ts = ev.timestamp.strftime("%Y%m%d_%H%M%S")
         path = f"{SNAPSHOT_DIR}/cam{ev.camera_id}_{ts}.jpg"
 
-        cv2.imwrite(path, ev.frame)
+       # cv2.imwrite(path, ev.frame)
 
         log.info("Snapshot saved -> %s", path)
 
