@@ -4,48 +4,55 @@ class Tracker:
     def __init__(self, cam_id):
         self.cam_id = cam_id
         self.next_id = 0
-        self.objects = {}
-        self.seen_ids = set()
+        self.tracks = {}
 
-    def _get_centroid(self, box):
-        x1, y1, x2, y2 = box
-        return ((x1+x2)//2, (y1+y2)//2)
+    def _iou(self, a, b):
+        x1 = max(a[0], b[0])
+        y1 = max(a[1], b[1])
+        x2 = min(a[2], b[2])
+        y2 = min(a[3], b[3])
+
+        inter = max(0, x2-x1) * max(0, y2-y1)
+
+        area_a = (a[2]-a[0])*(a[3]-a[1])
+        area_b = (b[2]-b[0])*(b[3]-b[1])
+
+        union = area_a + area_b - inter
+
+        if union == 0:
+            return 0
+
+        return inter / union
 
     def update(self, detections):
         new_ids = []
-        tracked = []
-
-        updated_objects = {}
+        updated = {}
 
         for det in detections:
-            x1, y1, x2, y2, conf = det
-            centroid = self._get_centroid((x1,y1,x2,y2))
+            box = det[:4]
 
-            assigned_id = None
+            best_id = None
+            best_iou = 0
 
-            for obj_id, prev_centroid in self.objects.items():
-                dist = np.linalg.norm(
-                    np.array(centroid) - np.array(prev_centroid)
-                )
+            for tid, tbox in self.tracks.items():
+                iou = self._iou(box, tbox)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_id = tid
 
-                if dist < 60:
-                    assigned_id = obj_id
-                    break
-
-            if assigned_id is not None:
-                updated_objects[assigned_id] = centroid
-                tracked.append((x1, y1, x2, y2, assigned_id))
+            if best_iou > 0.3:
+                updated[best_id] = box
             else:
-                obj_id = self.next_id
+                tid = self.next_id
                 self.next_id += 1
+                updated[tid] = box
+                new_ids.append(tid)
 
-                updated_objects[obj_id] = centroid
-                tracked.append((x1, y1, x2, y2, obj_id))
+        self.tracks = updated
 
-                if obj_id not in self.seen_ids:
-                    self.seen_ids.add(obj_id)
-                    new_ids.append(obj_id)
-
-        self.objects = updated_objects
+        tracked = [
+            (x1, y1, x2, y2, tid)
+            for tid, (x1,y1,x2,y2) in updated.items()
+        ]
 
         return tracked, new_ids

@@ -1,6 +1,6 @@
 import torch
 import torchvision.transforms as T
-from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_320_fpn
 import cv2
 
 from config import DETECT_CLASSES, CONFIDENCE_THRESH
@@ -10,7 +10,8 @@ class Detector:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.model = ssdlite320_mobilenet_v3_large(pretrained=True)
+        # smaller + faster model
+        self.model = fasterrcnn_mobilenet_v3_large_320_fpn(pretrained=True)
         self.model.to(self.device)
         self.model.eval()
 
@@ -19,21 +20,19 @@ class Detector:
         ])
 
     def detect(self, frame):
-        # FIX: BGR -> RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        img = self.transform(frame).to(self.device)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = self.transform(frame_rgb).to(self.device)
 
         with torch.no_grad():
             outputs = self.model([img])[0]
 
         detections = []
 
-        boxes = outputs["boxes"]
-        scores = outputs["scores"]
-        labels = outputs["labels"]
-
-        for box, score, label in zip(boxes, scores, labels):
+        for box, score, label in zip(
+            outputs["boxes"],
+            outputs["scores"],
+            outputs["labels"]
+        ):
             conf = float(score)
 
             if conf < CONFIDENCE_THRESH:
