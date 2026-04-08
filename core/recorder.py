@@ -48,15 +48,17 @@ class SingleFileRecorder:
             self.rows,
         )
 
-        # IMPORTANT: enforce FPS
+        # CORRECT REALTIME RECORDING
         cmd = [
             "ffmpeg",
             "-y",
 
+            "-re",  # IMPORTANT: realtime input
+
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
             "-s", f"{self.canvas_w}x{self.canvas_h}",
-            "-r", str(self.fps),      # input FPS
+            "-r", str(self.fps),
             "-i", "-",
 
             "-an",
@@ -68,7 +70,7 @@ class SingleFileRecorder:
             "-pix_fmt", "yuv420p",
 
             "-vsync", "1",
-            "-r", str(self.fps),      # output FPS
+            "-r", str(self.fps),
 
             "-movflags", "+faststart",
             self.path,
