@@ -1,5 +1,6 @@
-CAMERA_SOURCES = [0 ,"data/cam1.mp4", "data/cam2.mp4", 1]
-CAMERA_LABELS = ["Camera 1", "Camera 2", "Camera 3", "Camera 4"]
+
+CAMERA_SOURCES = [0]
+CAMERA_LABELS = ["Camera 1"]
 
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
