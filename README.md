@@ -1,87 +1,147 @@
-# 🎥 Jetson Nano Multi-Camera Surveillance System
+# 🚀 Jetson Nano Multi-Camera Edge AI Surveillance System
 
-A real-time multi-camera surveillance system optimized for **Jetson Nano**, supporting:
+A real-time **Edge AI surveillance system** optimized for the **NVIDIA Jetson Nano**. The system processes multiple camera streams simultaneously, performs **object detection**, **multi-object tracking**, **alert generation**, **snapshot capture**, and **continuous grid-based video recording** without relying on cloud processing.
 
-* 📷 Multiple camera inputs (USB + video files)
-* 🧠 Object detection (Faster R-CNN)
-* 🧍 Tracking (lightweight Deep-SORT/IoU)
-* 🚨 Alert system with snapshots
-* 🎬 Grid-based video recording (FFmpeg)
+---
+
+# 🎯 Objective
+
+Develop a lightweight, real-time surveillance system capable of monitoring multiple camera feeds on an edge device by performing:
+
+- 🎯 Real-time object detection
+- 👥 Multi-object tracking
+- 🚨 Alert generation for newly detected objects
+- 📸 Automatic snapshot capture
+- 🎥 Continuous surveillance video recording
+- ⚡ Low-latency on-device inference
+
+---
+
+# ✨ Key Features
+
+- 📷 Supports multiple USB cameras and video files
+- 🧠 Real-time object detection using **Faster R-CNN MobileNetV3 FPN**
+- 👤 Lightweight IoU-based multi-object tracking
+- 🆔 Persistent object IDs across consecutive frames
+- 🚨 Alert generation whenever a new object enters the scene
+- 📸 Automatic snapshot saving during alerts
+- 🎥 Continuous grid-based MP4 recording using FFmpeg
+- 🐳 Dockerized deployment for easy portability
+- ⚡ Optimized for NVIDIA Jetson Nano
 
 ---
 
 # ⚙️ System Architecture
 
-```
-Cameras → Detection → Tracking → Alerts → Recorder (Grid Video)
-```
-
-* **Detection**: PyTorch (FasterRCNN / SSD)
-* **Tracking**: Lightweight tracker (SORT / IoU)
-* **Recorder**: FFmpeg via rawvideo pipe
-* **Execution**: Sequential pipeline
-
----
-
-# 📦 Requirements
-
-## Hardware
-
-* Jetson Nano (JetPack 4.x)
-* USB Cameras OR video files
-
-## Software
-
-* Docker with NVIDIA runtime
-* Python 3.6+
-
----
-
-# 🚀 Setup & Run
-
-## 1. Run Docker Container
-
-```bash
-sudo docker run -it \
---name jetson-surveillance \
---runtime nvidia \
---network host \
---ipc host \
---privileged \
---device /dev/video0 \
---device /dev/video1 \
---device /dev/video2 \
---device /dev/video3 \
--v /sdcard/fol:/workspace \
-nvcr.io/nvidia/l4t-pytorch:r32.7.1-pth1.10-py3
-```
-
-👉 To allow all devices:
-
-```bash
---device /dev:/dev
+```text
+              Multiple Cameras
+                     │
+                     ▼
+          Frame Capture (OpenCV)
+                     │
+                     ▼
+              Frame Preprocessing
+                     │
+                     ▼
+      Faster R-CNN Object Detection
+                     │
+                     ▼
+          IoU-based Object Tracking
+          │                       │
+          │                       ▼
+          │               Alert Manager
+          │                       │
+          │               Snapshot Capture
+          │
+          ▼
+Draw Bounding Boxes & Tracking IDs
+                     │
+                     ▼
+          Multi-Camera Grid Builder
+                     │
+                     ▼
+             FFmpeg Video Encoder
+                     │
+                     ▼
+          Single Surveillance MP4
 ```
 
 ---
 
-## 2. Install Dependencies
+# 🧠 Detection Module
 
-### System packages
+- 🔹 Framework: PyTorch (Torchvision)
+- 🔹 Model: Faster R-CNN MobileNetV3 Large 320 FPN
+- 🔹 Purpose:
+  - Detect objects in every frame
+  - Generate bounding boxes and confidence scores
 
-```bash
-apt update
-apt install -y ffmpeg vim python3-opencv python3-numpy
+---
+
+# 👤 Tracking Module
+
+- 🔹 Algorithm: Custom IoU-based Tracker
+- 🔹 Assigns persistent IDs to detected objects
+- 🔹 Matches detections using Intersection over Union (IoU)
+- 🔹 Generates a new ID whenever a new object appears
+
+---
+
+# 🚨 Alert System
+
+Alerts are generated whenever:
+
+- ✅ A new tracking ID is created
+- ✅ A new object enters the camera view
+
+Each alert triggers:
+
+- 📸 Snapshot capture
+- 📝 Alert logging
+- ⏳ Cooldown mechanism to avoid repeated alerts
+
+---
+
+# 🎥 Recording Pipeline
+
+- 📹 Continuously records all processed frames
+- 🖥️ Combines all camera feeds into a single surveillance grid
+- 🎞️ Uses FFmpeg to encode frames into H.264 MP4 format
+- 💾 Stores recordings locally on the Jetson Nano
+
+---
+
+# 📂 Output
+
+## 🎥 Recordings
+
+```
+data/recordings/
 ```
 
-### Python packages
+Example
 
-```bash
-pip3 install python-dotenv loguru Pillow numpy
+```
+surveillance_20260804_103000.mp4
 ```
 
 ---
 
-## 3. Project Structure
+## 📸 Snapshots
+
+```
+data/snapshots/
+```
+
+Example
+
+```
+cam0_20260804_103015.jpg
+```
+
+---
+
+# 📁 Project Structure
 
 ```
 magneton-demo/
@@ -98,11 +158,9 @@ magneton-demo/
 │   └── logger.py
 │
 ├── data/
-│   ├── cam1.mp4
-│   ├── cam2.mp4
-│   ├── cam3.mp4
 │   ├── recordings/
-│   └── snapshots/
+│   ├── snapshots/
+│   └── sample_videos/
 │
 ├── config.py
 └── main.py
@@ -110,116 +168,66 @@ magneton-demo/
 
 ---
 
-## 4. Configure Cameras
+# 🛠️ Technologies Used
 
-Edit `config.py`:
+### 💻 Programming
 
-```python
-CAMERA_SOURCES = [
-    0,
-    "data/cam1.mp4",
-    "data/cam2.mp4",
-    1
-]
-```
+- 🐍 Python
 
----
+### 🤖 AI & Computer Vision
 
-## 5. Run the Project
+- 🧠 PyTorch
+- 👁️ Torchvision
+- 📷 OpenCV
+- 🎯 Faster R-CNN MobileNetV3 FPN
 
-```bash
-cd /workspace
-python3 main.py
-```
+### 🎥 Multimedia
 
----
+- 🎬 FFmpeg (H.264 Video Encoding)
 
-# 📊 Output
+### ⚙️ Deployment
 
-## 🎬 Recordings
-
-```
-data/recordings/
-```
-
-## 📸 Snapshots
-
-```
-data/snapshots/
-```
+- 🐳 Docker
+- 🚀 NVIDIA Jetson Nano
 
 ---
 
-# 🧠 Key Features
+# 📊 Performance
 
-* Multi-camera grid recording
-* Real-time detection + tracking
-* Alert system with cooldown
-* Works headless
-* Jetson optimized
-
----
-
-# ⚡ Performance Notes
-
-* Sequential processing
-* ~1–2 FPS per camera (4 cameras)
-* Detector is bottleneck
+- ⚡ Sequential processing pipeline
+- 📷 Supports multiple simultaneous camera streams
+- 🎥 Continuous surveillance recording
+- 🖥️ Approximately **1–2 FPS per camera (4 cameras)**
+- 🚧 Object detection is the primary performance bottleneck
 
 ---
 
 # 🚀 Future Improvements
 
-* Multi-threaded detection
-* TensorRT optimization
-* Async pipelines
-* RTSP streaming
-
----
-
-# 🐳 Docker Tips
-
-### Save container state
-
-```bash
-docker commit jetson-surveillance jetson-surveillance:latest
-```
-
-### Run saved image
-
-```bash
-docker run jetson-surveillance:latest
-```
-
----
-
-# 🛠 Troubleshooting
-
-## No detections
-
-```python
-CONFIDENCE_THRESH = 0.2
-```
-
-## Camera not detected
-
-```bash
-ls /dev/video*
-```
-
-## Corrupted video
-
-Stop using:
-
-```bash
-CTRL + C
-```
+- ⚡ TensorRT optimization
+- 🧵 Multi-threaded detection pipeline
+- 👤 Deep SORT / ByteTrack integration
+- 📡 RTSP camera support
+- 📧 Email/SMS alert notifications
+- ☁️ Optional cloud dashboard integration
+- 🎥 Hardware-accelerated video encoding
 
 ---
 
 # 📌 Summary
 
-* Multi-camera edge AI system
-* Detection + tracking + recording
-* Jetson Nano optimized
-* Modular and extendable
+✅ Multi-camera Edge AI surveillance system
+
+✅ Real-time object detection using Faster R-CNN
+
+✅ IoU-based multi-object tracking
+
+✅ Continuous grid-based MP4 recording
+
+✅ Automatic alert generation
+
+✅ Snapshot capture on alerts
+
+✅ Dockerized deployment
+
+✅ Optimized for NVIDIA Jetson Nano
