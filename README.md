@@ -3,8 +3,8 @@
 A real-time multi-camera surveillance system optimized for **Jetson Nano**, supporting:
 
 * 📷 Multiple camera inputs (USB + video files)
-* 🧠 Object detection (PyTorch models)
-* 🧍 Tracking (lightweight SORT / IoU)
+* 🧠 Object detection (Faster R-CNN)
+* 🧍 Tracking (lightweight Deep-SORT/IoU)
 * 🚨 Alert system with snapshots
 * 🎬 Grid-based video recording (FFmpeg)
 
